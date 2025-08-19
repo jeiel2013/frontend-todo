@@ -4,30 +4,72 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { Checkbox } from "../components/ui/checkbox"
-import { Plus, CheckCircle2, Circle, Trash2, Calendar, Target } from "lucide-react"
+import { Plus, CheckCircle2, Circle, Trash2, Calendar, Target, LogOut, User } from "lucide-react"
+import { api } from "../utils/api" // ← IMPORTAR O API CLIENT
 
 interface Todo {
   id: number
   title: string
   completed: boolean
+  userId: number
+  createdAt: string
 }
 
-export default function Todo() {
+interface User {
+  id: number
+  name: string
+  email: string
+  createdAt: string
+}
+
+export default function Todo({ onLogout }: { onLogout?: () => void }) {
   const [todos, setTodos] = useState<Todo[]>([])
   const [newTodo, setNewTodo] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [user, setUser] = useState<User | null>(null)
+  const [initialLoading, setInitialLoading] = useState(true)
 
-  const token = localStorage.getItem("token")
+  const handleLogout = () => {
+    console.log("👋 Fazendo logout...")
+    localStorage.removeItem("token")
+    if (onLogout) {
+      onLogout()
+    }
+  }
+
+  // Carregar dados iniciais
+  useEffect(() => {
+    loadInitialData()
+  }, [])
+
+  const loadInitialData = async () => {
+    try {
+      console.log("🔄 Carregando dados iniciais...")
+      
+      // Carregar perfil do usuário e todos em paralelo
+      const [userProfile, todosData] = await Promise.all([
+        api.getProfile(),
+        api.getTodos()
+      ])
+      
+      setUser(userProfile)
+      setTodos(todosData)
+      console.log("✅ Dados carregados:", { user: userProfile, todos: todosData })
+      
+    } catch (error) {
+      console.error("❌ Erro ao carregar dados:", error)
+      // O api.ts já fez logout automático se token expirou
+    } finally {
+      setInitialLoading(false)
+    }
+  }
 
   const fetchTodos = async () => {
     try {
-      const res = await fetch("http://localhost:3000/todos", {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const data = await res.json()
+      const data = await api.getTodos()
       setTodos(data)
     } catch (error) {
-      console.error("Erro ao buscar tarefas:", error)
+      console.error("❌ Erro ao buscar tarefas:", error)
     }
   }
 
@@ -36,32 +78,46 @@ export default function Todo() {
     
     setIsLoading(true)
     try {
-      await fetch("http://localhost:3000/todos", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ title: newTodo }),
-      })
+      console.log("➕ Adicionando todo:", newTodo)
+      const todo = await api.createTodo({ title: newTodo.trim() })
+      setTodos(prev => [todo, ...prev])
       setNewTodo("")
-      fetchTodos()
     } catch (error) {
-      console.error("Erro ao adicionar tarefa:", error)
+      console.error("❌ Erro ao adicionar tarefa:", error)
+      alert("Erro ao adicionar tarefa")
     } finally {
       setIsLoading(false)
     }
   }
 
   const toggleTodo = async (id: number) => {
+    const todo = todos.find(t => t.id === id)
+    if (!todo) return
+
     try {
-      await fetch(`http://localhost:3000/todos/${id}/toggle`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      fetchTodos()
+      console.log(`🔄 Alternando todo ${id} para ${!todo.completed}`)
+      await api.updateTodo(id, { completed: !todo.completed })
+      setTodos(prev => 
+        prev.map(t => 
+          t.id === id ? { ...t, completed: !t.completed } : t
+        )
+      )
     } catch (error) {
-      console.error("Erro ao alterar tarefa:", error)
+      console.error("❌ Erro ao alterar tarefa:", error)
+      alert("Erro ao alterar tarefa")
+    }
+  }
+
+  const deleteTodo = async (id: number) => {
+    if (!confirm("Tem certeza que deseja excluir esta tarefa?")) return
+
+    try {
+      console.log("🗑️ Deletando todo:", id)
+      await api.deleteTodo(id)
+      setTodos(prev => prev.filter(t => t.id !== id))
+    } catch (error) {
+      console.error("❌ Erro ao deletar tarefa:", error)
+      alert("Erro ao deletar tarefa")
     }
   }
 
@@ -71,20 +127,41 @@ export default function Todo() {
     }
   }
 
-  useEffect(() => {
-    fetchTodos()
-  }, [])
+  // Loading inicial
+  if (initialLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-500 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-lg text-gray-600">Carregando suas tarefas...</p>
+        </div>
+      </div>
+    )
+  }
 
   const completedTodos = todos.filter(todo => todo.completed).length
   const totalTodos = todos.length
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-4">
-      {/* Header com estatísticas */}
-      <div className="max-w-2xl mx-auto mb-8">
-        <div className="text-center mb-6">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">Minhas Tarefas</h1>
-          <p className="text-gray-600">Organize seu dia e seja mais produtivo</p>
+      {/* Header com informações do usuário */}
+      <div className="max-w-2xl mx-auto mb-6">
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <h1 className="text-4xl font-bold text-gray-800 mb-2">Minhas Tarefas</h1>
+            <div className="flex items-center gap-2 text-gray-600">
+              <User className="w-4 h-4" />
+              <span>Olá, {user?.name || 'Usuário'}!</span>
+            </div>
+          </div>
+          <Button
+            onClick={handleLogout}
+            variant="outline"
+            className="flex items-center gap-2 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+          >
+            <LogOut className="w-4 h-4" />
+            Sair
+          </Button>
         </div>
         
         {/* Cards de estatísticas */}
@@ -200,12 +277,24 @@ export default function Todo() {
                       </span>
                     </div>
 
-                    {todo.completed && (
-                      <div className="flex items-center gap-2 text-green-600">
-                        <CheckCircle2 className="w-5 h-5" />
-                        <span className="text-sm font-medium">Concluída</span>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {todo.completed && (
+                        <div className="flex items-center gap-2 text-green-600">
+                          <CheckCircle2 className="w-5 h-5" />
+                          <span className="text-sm font-medium">Concluída</span>
+                        </div>
+                      )}
+                      
+                      {/* Botão de deletar */}
+                      <Button
+                        onClick={() => deleteTodo(todo.id)}
+                        variant="ghost"
+                        size="sm"
+                        className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 hover:bg-red-50 transition-all duration-200"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                 ))
               )}
@@ -223,7 +312,7 @@ export default function Todo() {
                 <div className="w-full bg-gray-200 rounded-full h-3">
                   <div 
                     className="bg-gradient-to-r from-indigo-500 to-purple-500 h-3 rounded-full transition-all duration-500 ease-out"
-                    style={{ width: `${(completedTodos / totalTodos) * 100}%` }}
+                    style={{ width: `${totalTodos > 0 ? (completedTodos / totalTodos) * 100 : 0}%` }}
                   ></div>
                 </div>
               </div>
