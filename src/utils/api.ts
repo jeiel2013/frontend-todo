@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = 'https://backend-todo-1-w5as.onrender.com';
 
 class ApiClient {
   private getAuthHeaders(): Record<string, string> {
@@ -8,7 +8,7 @@ class ApiClient {
   }
 
   async request(endpoint: string, options: RequestInit = {}) {
-    const url = `${API_BASE_URL}${endpoint}`;
+    const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
     const mergedHeaders: HeadersInit = {
       'Content-Type': 'application/json',
