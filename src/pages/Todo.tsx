@@ -208,7 +208,7 @@ export default function Todo({ onLogout }: { onLogout?: () => void }) {
                     year: 'numeric', 
                     month: 'long', 
                     day: 'numeric' 
-                  })}
+                  }).replace(/^./, str => str.toUpperCase())}
                 </p>
               </div>
             </div>
